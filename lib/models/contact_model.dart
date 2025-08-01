@@ -2,7 +2,7 @@ class ContactModel {
   final String? name;
   final String? phone;
   final String? email;
-  final String? image; // base64 or URL
+  final String? image; // Base64 encoded string
 
   ContactModel({this.name, this.phone, this.email, this.image});
 

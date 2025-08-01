@@ -176,20 +176,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ContactsScreen()),
-                );
-              },
-              icon: const Icon(Icons.contacts),
-              label: const Text("My Contacts"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueGrey,
-                foregroundColor: Colors.white,
-              ),
-            ),
+           ElevatedButton.icon(
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactsScreen()),
+    );
+  },
+  icon: const Icon(Icons.contacts),
+  label: const Text("My Contacts"),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.blueGrey,
+    foregroundColor: Colors.white,
+  ),
+),
+
+         
+         
           ],
         ),
       ),

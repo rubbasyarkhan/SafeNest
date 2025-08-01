@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:safenest/models/contact_model.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -11,62 +15,103 @@ class ContactsScreen extends StatefulWidget {
 }
 
 class _ContactsScreenState extends State<ContactsScreen> {
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+
   Future<void> _addContactDialog() async {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     final emailController = TextEditingController();
-    final imageController = TextEditingController();
+
+    String? base64Image;
+
+    Future<void> _pickImage(StateSetter setModalState) async {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        setModalState(() {
+          base64Image = base64Encode(bytes);
+        });
+      }
+    }
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Add Contact"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
-              TextField(controller: phoneController, decoration: const InputDecoration(labelText: "Phone")),
-              TextField(controller: emailController, decoration: const InputDecoration(labelText: "Email")),
-              TextField(controller: imageController, decoration: const InputDecoration(labelText: "Image URL")),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: const Text("Add Contact"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => _pickImage(setModalState),
+                  child: CircleAvatar(
+                    radius: 40,
+                    backgroundImage: base64Image != null
+                        ? MemoryImage(base64Decode(base64Image!))
+                        : null,
+                    child: base64Image == null
+                        ? const Icon(Icons.add_a_photo, size: 30)
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: "Name"),
+                ),
+                TextField(
+                  controller: phoneController,
+                  decoration: const InputDecoration(labelText: "Phone"),
+                  keyboardType: TextInputType.phone,
+                ),
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(labelText: "Email"),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final user = _auth.currentUser;
+                if (user != null) {
+                  final contact = ContactModel(
+                    name: nameController.text.trim(),
+                    phone: phoneController.text.trim(),
+                    email: emailController.text.trim(),
+                    image: base64Image,
+                  );
+
+                  await _firestore
+                      .collection('users')
+                      .doc(user.uid)
+                      .collection('contacts')
+                      .add(contact.toJson());
+
+                  Navigator.pop(ctx);
+                  Fluttertoast.showToast(msg: "✅ Contact added");
+                }
+              },
+              child: const Text("Save"),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user != null) {
-                final contact = ContactModel(
-                  name: nameController.text.trim(),
-                  phone: phoneController.text.trim(),
-                  email: emailController.text.trim(),
-                  image: imageController.text.trim(),
-                );
-
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(user.uid)
-                    .collection('contacts')
-                    .add(contact.toJson());
-
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text("Save"),
-          ),
-        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _auth.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -82,7 +127,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: user == null
           ? const Center(child: Text("Not logged in"))
           : StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
+              stream: _firestore
                   .collection('users')
                   .doc(user.uid)
                   .collection('contacts')
@@ -110,7 +155,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     final contact = contacts[index];
                     return ListTile(
                       leading: contact.image != null && contact.image!.isNotEmpty
-                          ? CircleAvatar(backgroundImage: NetworkImage(contact.image!))
+                          ? CircleAvatar(
+                              backgroundImage: MemoryImage(base64Decode(contact.image!)),
+                            )
                           : const CircleAvatar(child: Icon(Icons.person)),
                       title: Text(contact.name ?? 'No Name'),
                       subtitle: Text("${contact.phone ?? ''}\n${contact.email ?? ''}"),
