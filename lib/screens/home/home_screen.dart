@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../routes/app_routes.dart';
-import '../../services/location_service.dart'; // ← Import location service
+import '../../services/location_service.dart';
+import '../../services/video_service.dart'; // ⬅️ NEW video service
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -28,10 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final uid = user.uid;
         final doc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(uid)
+            .doc(user.uid)
             .get();
         if (doc.exists) {
           final data = doc.data()!;
@@ -47,25 +46,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
- Future<void> _getLocation() async {
-  try {
-    final position = await LocationService.getCurrentLocation();
+  Future<void> _getLocation() async {
+    try {
+      final position = await LocationService.getCurrentLocation();
 
-    if (!mounted) return;
+      if (!mounted || position == null) return;
 
-    if (position != null) {
       final latitude = position.latitude;
       final longitude = position.longitude;
       final googleMapsLink =
           'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
 
-      print("📍 Google Maps Link: $googleMapsLink");
-
-      // 🔥 Save to Firestore only if location is not already saved
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final uid = user.uid;
-        final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+        final docRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
         final docSnapshot = await docRef.get();
 
         if (docSnapshot.exists) {
@@ -73,14 +68,15 @@ class _HomeScreenState extends State<HomeScreen> {
           final savedLat = data?['latitude'];
           final savedLng = data?['longitude'];
 
-          // Check if saved location already exists and is similar (to avoid redundant updates)
-          if (savedLat == null || savedLng == null || 
-              (savedLat - latitude).abs() > 0.0001 || 
+          if (savedLat == null ||
+              savedLng == null ||
+              (savedLat - latitude).abs() > 0.0001 ||
               (savedLng - longitude).abs() > 0.0001) {
             await docRef.update({
               'latitude': latitude,
               'longitude': longitude,
               'locationLink': googleMapsLink,
+              'locationUpdatedAt': FieldValue.serverTimestamp(),
             });
             print("✅ Location updated in Firebase.");
           } else {
@@ -89,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // 🗺️ Show location dialog
+      // 🗺️ Show dialog
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -115,17 +111,30 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Location error: $e")),
+      );
     }
-  } catch (e) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text("Location error: $e")));
   }
-}
+
+  Future<void> _recordVideo() async {
+    try {
+      final filePath = await VideoService.recordVideo();
+      if (filePath != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("🎥 Video saved at: $filePath")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Camera error: $e")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -133,32 +142,6 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green.shade700,
-        // actions: [
-        //   Padding(
-        //     padding: const EdgeInsets.only(right: 16.0),
-        //     child: GestureDetector(
-        //       onTap: () => _showProfileModal(context),
-        //       child: base64Image != null && base64Image!.isNotEmpty
-        //           ? CircleAvatar(
-        //               radius: 20,
-        //               backgroundImage: MemoryImage(base64Decode(base64Image!)),
-        //             )
-        //           : CircleAvatar(
-        //               radius: 20,
-        //               backgroundColor: Colors.teal,
-        //               child: Text(
-        //                 nameInitial,
-        //                 style: const TextStyle(
-        //                   fontWeight: FontWeight.bold,
-        //                   fontSize: 18,
-        //                   color: Colors.white,
-        //                 ),
-        //               ),
-        //             ),
-        //     ),
-        //   ),
-        // ],
-      
       ),
       body: Center(
         child: Column(
@@ -169,6 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(fontSize: 18),
             ),
             const SizedBox(height: 20),
+
+            // 📍 Get Location Button
             ElevatedButton.icon(
               onPressed: _getLocation,
               icon: const Icon(Icons.location_on),
@@ -178,11 +163,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 foregroundColor: Colors.white,
               ),
             ),
+            const SizedBox(height: 15),
+
+            // 🎥 Record Video Button
+            ElevatedButton.icon(
+              onPressed: _recordVideo,
+              icon: const Icon(Icons.videocam),
+              label: const Text("Record Video"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                foregroundColor: Colors.white,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
-
- 
 }
