@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:safenest/screens/contact/contacts_screen.dart';
 import '../../services/location_service.dart';
 import '../../services/video_service.dart'; // ⬅️ NEW video service
 
@@ -59,8 +58,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final docRef =
-            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final docRef = FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid);
         final docSnapshot = await docRef.get();
 
         if (docSnapshot.exists) {
@@ -112,9 +112,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Location error: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Location error: $e")));
     }
   }
 
@@ -122,14 +122,14 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final filePath = await VideoService.recordVideo();
       if (filePath != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("🎥 Video saved at: $filePath")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("🎥 Video saved at: $filePath")));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Camera error: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Camera error: $e")));
     }
   }
 
@@ -175,6 +175,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 foregroundColor: Colors.white,
               ),
             ),
+
+           ElevatedButton.icon(
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactsScreen()),
+    );
+  },
+  icon: const Icon(Icons.contacts),
+  label: const Text("My Contacts"),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.blueGrey,
+    foregroundColor: Colors.white,
+  ),
+),
+
+         
+         
           ],
         ),
       ),
