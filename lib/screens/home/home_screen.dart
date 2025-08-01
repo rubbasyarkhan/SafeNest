@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../routes/app_routes.dart';
+import '../../services/location_service.dart'; // ← Import location service
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -27,7 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final uid = user.uid;
-        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .get();
         if (doc.exists) {
           final data = doc.data()!;
           setState(() {
@@ -42,11 +47,84 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+ Future<void> _getLocation() async {
+  try {
+    final position = await LocationService.getCurrentLocation();
+
+    if (!mounted) return;
+
+    if (position != null) {
+      final latitude = position.latitude;
+      final longitude = position.longitude;
+      final googleMapsLink =
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+      print("📍 Google Maps Link: $googleMapsLink");
+
+      // 🔥 Save to Firestore only if location is not already saved
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final uid = user.uid;
+        final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+        final docSnapshot = await docRef.get();
+
+        if (docSnapshot.exists) {
+          final data = docSnapshot.data();
+          final savedLat = data?['latitude'];
+          final savedLng = data?['longitude'];
+
+          // Check if saved location already exists and is similar (to avoid redundant updates)
+          if (savedLat == null || savedLng == null || 
+              (savedLat - latitude).abs() > 0.0001 || 
+              (savedLng - longitude).abs() > 0.0001) {
+            await docRef.update({
+              'latitude': latitude,
+              'longitude': longitude,
+              'locationLink': googleMapsLink,
+            });
+            print("✅ Location updated in Firebase.");
+          } else {
+            print("ℹ️ Location already saved, no update needed.");
+          }
+        }
+      }
+
+      // 🗺️ Show location dialog
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Your Location"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Latitude: $latitude"),
+              Text("Longitude: $longitude"),
+              const SizedBox(height: 10),
+              SelectableText(
+                googleMapsLink,
+                style: const TextStyle(color: Colors.blue),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text("Location error: $e")));
+  }
+}
+
   @override
   Widget build(BuildContext context) {
-    final nameInitial = (fullName != null && fullName!.isNotEmpty)
-        ? fullName![0].toUpperCase()
-        : '?';
 
     return Scaffold(
       appBar: AppBar(
@@ -55,123 +133,56 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.green.shade700,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: GestureDetector(
-              onTap: () => _showProfileModal(context),
-              child: base64Image != null && base64Image!.isNotEmpty
-                  ? CircleAvatar(
-                      radius: 20,
-                      backgroundImage: MemoryImage(base64Decode(base64Image!)),
-                    )
-                  : CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.teal,
-                      child: Text(
-                        nameInitial,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-        ],
+        // actions: [
+        //   Padding(
+        //     padding: const EdgeInsets.only(right: 16.0),
+        //     child: GestureDetector(
+        //       onTap: () => _showProfileModal(context),
+        //       child: base64Image != null && base64Image!.isNotEmpty
+        //           ? CircleAvatar(
+        //               radius: 20,
+        //               backgroundImage: MemoryImage(base64Decode(base64Image!)),
+        //             )
+        //           : CircleAvatar(
+        //               radius: 20,
+        //               backgroundColor: Colors.teal,
+        //               child: Text(
+        //                 nameInitial,
+        //                 style: const TextStyle(
+        //                   fontWeight: FontWeight.bold,
+        //                   fontSize: 18,
+        //                   color: Colors.white,
+        //                 ),
+        //               ),
+        //             ),
+        //     ),
+        //   ),
+        // ],
+      
       ),
-      body: const Center(
-        child: Text(
-          "Welcome to the Home Screen 🌿",
-          style: TextStyle(fontSize: 18),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "Welcome to the Home Screen 🌿",
+              style: TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _getLocation,
+              icon: const Icon(Icons.location_on),
+              label: const Text("Get My Location"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _showProfileModal(BuildContext context) {
-    final nameInitial = (fullName != null && fullName!.isNotEmpty)
-        ? fullName![0].toUpperCase()
-        : '?';
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25.0)),
-      ),
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              base64Image != null && base64Image!.isNotEmpty
-                  ? CircleAvatar(
-                      radius: 40,
-                      backgroundImage: MemoryImage(base64Decode(base64Image!)),
-                    )
-                  : CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.teal,
-                      child: Text(
-                        nameInitial,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 10),
-              Text(
-                fullName ?? "Loading...",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                email ?? "",
-                style: const TextStyle(color: Colors.grey),
-              ),
-              const Divider(height: 30, thickness: 1.0),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person),
-                title: const Text("Profile"),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, AppRoutes.profile);
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.settings),
-                title: const Text("Settings"),
-                onTap: () {
-                  Navigator.pop(context);
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.logout),
-                title: const Text("Logout"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await FirebaseAuth.instance.signOut();
-                  if (mounted) {
-                    Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+ 
 }
